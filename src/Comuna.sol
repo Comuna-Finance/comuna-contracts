@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import "../lib/abdk-libraries-solidity/ABDKMath64x64.sol";
 
 contract Comuna {
     // ========= Types =========
@@ -36,6 +37,7 @@ contract Comuna {
     event LoanDisbursed(uint256 indexed loanId);
     event LoanPayment(uint256 indexed loanId, uint256 amount);
     event LoanPaid(uint256 indexed loanId);
+    event ProfitDistributed(address indexed member, uint256 amount);
 
     // ========= State =========
     // Constants
@@ -138,6 +140,21 @@ contract Comuna {
         return isCurrentPeriodActive && depositCount[currentPeriod] < members.length;
     }
 
+    function _calculateSharesAmount(uint256 _amount, uint256 _sharePrice) internal pure returns (uint256) {
+        // Convert the amount and share price to int128 format
+        int128 amount = ABDKMath64x64.fromUInt(_amount);
+        int128 sharePrice = ABDKMath64x64.fromUInt(_sharePrice);
+
+        // Multiply the amount by 10000 to give us 4 decimal places of precision
+        int128 adjustedAmount = ABDKMath64x64.mul(amount, ABDKMath64x64.fromUInt(10000));
+
+        // Divide the adjusted amount by the share price
+        int128 shares = ABDKMath64x64.div(adjustedAmount, sharePrice);
+
+        // Return the number of shares, converted back to uint256
+        return uint256(ABDKMath64x64.toUInt(shares));
+    }
+
     function deposit(uint256 _amount) public onlyMember {
         require(areDepositsOpen(), "Deposits are not open");
         require(deposits[currentPeriod][msg.sender] == 0, 'Already deposited');
@@ -149,7 +166,7 @@ contract Comuna {
         capitalDeposited += _amount;
 
         uint256 sharePrice = getSharePrice();
-        uint256 shares = (_amount * 10000 ) / sharePrice;
+        uint256 shares = _calculateSharesAmount(_amount, sharePrice);
         sharesOwned[msg.sender] += shares;
 
         bool success = token.transferFrom(msg.sender, address(this), _amount);
@@ -269,7 +286,16 @@ contract Comuna {
 
     // Loan Repayment
     function _calculateInterest(uint256 balance) internal pure returns (uint256) {
-        return (balance * INTEREST_RATE) / (PERIODS_PER_CYCLE * 100);
+        // Convert the balance, interest rate, and periods per cycle to int128 format
+        int128 balanceInt128 = ABDKMath64x64.fromUInt(balance);
+        int128 interestRate = ABDKMath64x64.fromUInt(INTEREST_RATE);
+        int128 periodsPerCycle = ABDKMath64x64.fromUInt(PERIODS_PER_CYCLE);
+
+        // Calculate the interest: (balance * rate) / (periods * 100)
+        int128 interest = ABDKMath64x64.div(ABDKMath64x64.mul(balanceInt128, interestRate), ABDKMath64x64.mul(periodsPerCycle, ABDKMath64x64.fromUInt(100)));
+
+        // Return the interest, converted back to uint256
+        return uint256(ABDKMath64x64.toUInt(interest));
     }
 
     function _calculatePrincipal(uint256 periodicPayment, uint256 interest) internal pure returns (uint256) {
@@ -301,14 +327,60 @@ contract Comuna {
         }
     }
 
-    // Distribute Profits
+    // Profit Distribution
+    function distributeProfits() public onlyMember {
+        // Check the token balance of the contract
+        uint256 contractBalance = token.balanceOf(address(this));
+    
+        require(profit > 0, "No profits to distribute");
+        require(contractBalance >= profit, "Contract does not have enough tokens");
+
+        uint256 totalProfit = profit;
+        profit = 0; // Reset the profit tracker
+
+        // Calculate the profit per share
+        int128 totalProfitInt128 = ABDKMath64x64.fromUInt(totalProfit);
+        int128 totalSharesInt128 = ABDKMath64x64.fromUInt(totalShares);
+        int128 profitPerShare = ABDKMath64x64.div(totalProfitInt128, totalSharesInt128);
+
+        // Iterate over all members
+        for (uint256 i = 0; i < members.length; i++) {
+            address member = members[i];
+            uint256 memberShares = sharesOwned[member];
+        
+            if (memberShares > 0) {
+                // Calculate the profit for this member
+                int128 memberSharesInt128 = ABDKMath64x64.fromUInt(memberShares);
+                uint256 memberProfit = uint256(ABDKMath64x64.toUInt(ABDKMath64x64.mul(profitPerShare, memberSharesInt128)));
+            
+                // Transfer the profit to the member
+                bool success = token.transfer(member, memberProfit);
+                require(success, 'Transfer failed');
+                emit ProfitDistributed(member, memberProfit);
+            }
+        }
+    }
 
     // Helpers
     function _isMajority(uint256 _votes) internal view returns(bool) {
         return _votes > members.length / 2;
     }
 
-    function getSharePrice() public view returns(uint256) {
-        return INITIAL_SHARE_PRICE * ((1 + (INTEREST_RATE / 100 / PERIODS_PER_CYCLE)) ** currentCycle);
+    function getSharePrice() public view returns (uint256) {
+        // share price = initial share price * ((1 + (interest rate / periods per cycle)) ^ current cycle)
+
+        // Convert the initial share price, interest rate, periods per cycle to int128 format
+        int128 initialSharePrice = ABDKMath64x64.fromUInt(INITIAL_SHARE_PRICE);
+        int128 interestRate = ABDKMath64x64.fromUInt(INTEREST_RATE);
+        int128 periodsPerCycle = ABDKMath64x64.fromUInt(PERIODS_PER_CYCLE);
+    
+        // Calculate the compounded rate: (1 + (r / n))
+        int128 compoundedRate = ABDKMath64x64.add(ABDKMath64x64.fromUInt(1), ABDKMath64x64.div(interestRate, periodsPerCycle));
+
+        // Calculate the share price: initial price * ((1 + (r / n)) ^ t)
+        int128 sharePrice = ABDKMath64x64.mul(initialSharePrice, ABDKMath64x64.pow(compoundedRate, currentCycle));
+
+        // Return the share price converted to uint256
+        return uint256(ABDKMath64x64.toUInt(sharePrice));
     }
 }
