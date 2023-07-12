@@ -367,6 +367,10 @@ contract Comuna {
     }
 
     function getSharePrice() public view returns (uint256) {
+        if (currentPeriod == 0) {
+            return INITIAL_SHARE_PRICE;
+        }
+
         // share price = initial share price * ((1 + (interest rate / periods per cycle)) ^ current cycle)
 
         // Convert the initial share price, interest rate, periods per cycle to int128 format
@@ -382,5 +386,10 @@ contract Comuna {
 
         // Return the share price converted to uint256
         return uint256(ABDKMath64x64.toUInt(sharePrice));
+    }
+
+    // View
+    function getMembers() public view returns (address[] memory) {
+        return members;
     }
 }
