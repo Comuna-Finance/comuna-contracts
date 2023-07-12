@@ -34,7 +34,7 @@ contract ComunaFactoryTest is Test {
     assertEq(factory.isComuna(address(comuna)), true );
   }
 
-  function test_revertIfNotComuna() public {
+  function test_isNotComuna() public {
     ComunaFactory factory = new ComunaFactory();
     bool isComuna = factory.isComuna(address(0x1));
 

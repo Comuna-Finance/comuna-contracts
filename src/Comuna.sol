@@ -100,31 +100,32 @@ contract Comuna {
             }
         }
 
-        require(isChairmanMember, 'Chairman must be a member');
+        require(isChairmanMember, 'chairman must be a member');
     }
 
     // ========= Modifiers =========
     modifier onlyMember() {
-        require(isMember[msg.sender], "Not a member");
+        require(isMember[msg.sender], "not a member");
         _;
     }
 
     modifier onlyChairman {
-        require(msg.sender == chairman);
+        require(msg.sender == chairman, 'not the chairman');
         _;
     }
 
     // ========= Functions =========
     // Governance
     function startPeriod() public onlyChairman {
-        require(isCurrentPeriodActive == false && block.timestamp >= nextPeriodStartTime, 'Period already active');
+        require(isCurrentPeriodActive == false && block.timestamp >= nextPeriodStartTime, 'period already active');
         
         currentPeriod++;
         isCurrentPeriodActive = true;
+        nextPeriodStartTime = block.timestamp;
     }
 
     function endPeriod() public onlyChairman {
-        require(isCurrentPeriodActive == true, 'Period already inactive');
+        require(isCurrentPeriodActive == true, 'period not active');
         
         nextPeriodStartTime = block.timestamp + PERID_DURATION;
         isCurrentPeriodActive = false;
@@ -156,9 +157,9 @@ contract Comuna {
     }
 
     function deposit(uint256 _amount) public onlyMember {
-        require(areDepositsOpen(), "Deposits are not open");
-        require(deposits[currentPeriod][msg.sender] == 0, 'Already deposited');
-        require(_amount > 0, 'Amount must be greater than 0');
+        require(areDepositsOpen(), "deposits are not open");
+        require(deposits[currentPeriod][msg.sender] == 0, 'already deposited');
+        require(_amount > 0, 'amount must be greater than 0');
 
         depositCount[currentPeriod]++;
         deposits[currentPeriod][msg.sender] = _amount;
@@ -170,7 +171,7 @@ contract Comuna {
         sharesOwned[msg.sender] += shares;
 
         bool success = token.transferFrom(msg.sender, address(this), _amount);
-        require(success, 'Transfer failed');
+        require(success, 'transfer failed');
 
         emit Deposit(msg.sender, currentPeriod, _amount);
     }
@@ -200,10 +201,10 @@ contract Comuna {
     }
 
     function requestLoan(uint256 _amount, uint256 _duration) public onlyMember {
-        require(isCurrentPeriodActive == true && depositCount[currentPeriod] == members.length, 'Loan requests are not open yet');
-        require(_amount <= capitalDeposited, 'Amount not available');
-        require(_amount * MULTIPLIER <= depositBalance[msg.sender], 'Amount above your limit');
-        require(hasLoan[msg.sender] == false, 'Already has a loan');
+        require(isCurrentPeriodActive == true && depositCount[currentPeriod] == members.length, 'loan requests are not open yet');
+        require(_amount <= capitalDeposited, 'amount not available');
+        require(_amount * MULTIPLIER <= depositBalance[msg.sender], 'amount above your limit');
+        require(hasLoan[msg.sender] == false, 'already has a loan');
 
         uint256 periodicPayment = _calculatePeriodicPayment(_amount, _duration);
         uint256 repaymentAmount = _amount + (periodicPayment * _duration);
@@ -229,8 +230,8 @@ contract Comuna {
     }
 
     function voteOnLoanRequest(uint256 _loanId, bool _isApproved) public onlyMember {
-        require(loans[_loanId].status == LoanStatus.Pending, 'Request closed');
-        require(loanVoters[_loanId][msg.sender] != true, 'Already voted');
+        require(loans[_loanId].status == LoanStatus.Pending, 'request closed');
+        require(loanVoters[_loanId][msg.sender] != true, 'already voted');
 
         loanVoters[_loanId][msg.sender] = true;
         emit LoanRequestVote(msg.sender, _loanId, _isApproved);
@@ -246,7 +247,7 @@ contract Comuna {
     function _handleLoanApprovalVote(uint256 _loanId) internal {
         Loan storage loan = loans[_loanId];
         
-        require(loan.amount <= capitalDeposited, 'Not enough funds');
+        require(loan.amount <= capitalDeposited, 'not enough funds');
         
         loan.approvalCount++;
         
@@ -274,11 +275,11 @@ contract Comuna {
     // Loan Disbursement
     function disburseLoan(uint256 _loanId) public onlyMember {
         Loan storage loan = loans[_loanId];
-        require(loan.status == LoanStatus.Approved, 'Loan not approved');
-        require(loan.borrower == msg.sender, 'Not the borrower');
+        require(loan.status == LoanStatus.Approved, 'loan not approved');
+        require(loan.borrower == msg.sender, 'not the borrower');
 
         bool success = token.transfer(loan.borrower, loan.amount);
-        require(success, 'Transfer failed');
+        require(success, 'transfer failed');
 
         loan.status = LoanStatus.Disbursed;
         emit LoanDisbursed(_loanId);
@@ -304,14 +305,14 @@ contract Comuna {
 
     function makeLoanPayment(uint256 _loanId) public onlyMember {
         Loan storage loan = loans[_loanId];
-        require(loan.status == LoanStatus.Disbursed, 'Loan not disbursed');
-        require(loan.borrower == msg.sender, 'Not the borrower');
+        require(loan.status == LoanStatus.Disbursed, 'loan not disbursed');
+        require(loan.borrower == msg.sender, 'not the borrower');
 
         uint256 interest = _calculateInterest(loan.balance);
         uint256 principal = _calculatePrincipal(loan.periodicPayment, interest);
 
         bool success = token.transferFrom(msg.sender, address(this), loan.periodicPayment);
-        require(success, 'Transfer failed');
+        require(success, 'transfer failed');
 
         loan.balance -= loan.periodicPayment;
         capitalLoaned -= principal;
@@ -332,8 +333,8 @@ contract Comuna {
         // Check the token balance of the contract
         uint256 contractBalance = token.balanceOf(address(this));
     
-        require(profit > 0, "No profits to distribute");
-        require(contractBalance >= profit, "Contract does not have enough tokens");
+        require(profit > 0, "no profits to distribute");
+        require(contractBalance >= profit, "contract does not have enough tokens");
 
         uint256 totalProfit = profit;
         profit = 0; // Reset the profit tracker
@@ -355,7 +356,7 @@ contract Comuna {
             
                 // Transfer the profit to the member
                 bool success = token.transfer(member, memberProfit);
-                require(success, 'Transfer failed');
+                require(success, 'transfer failed');
                 emit ProfitDistributed(member, memberProfit);
             }
         }
@@ -382,7 +383,7 @@ contract Comuna {
         int128 compoundedRate = ABDKMath64x64.add(ABDKMath64x64.fromUInt(1), ABDKMath64x64.div(interestRate, periodsPerCycle));
 
         // Calculate the share price: initial price * ((1 + (r / n)) ^ t)
-        int128 sharePrice = ABDKMath64x64.mul(initialSharePrice, ABDKMath64x64.pow(compoundedRate, currentCycle));
+        int128 sharePrice = ABDKMath64x64.mul(initialSharePrice, ABDKMath64x64.pow(compoundedRate, currentCycle - 1)); // We substract 1 because it starts at 1, not 0
 
         // Return the share price converted to uint256
         return uint256(ABDKMath64x64.toUInt(sharePrice));
@@ -391,5 +392,17 @@ contract Comuna {
     // View
     function getMembers() public view returns (address[] memory) {
         return members;
+    }
+
+    function getDepositBalance(address member) public view returns (uint256) {
+        return depositBalance[member];
+    }
+
+    function getSharesOwned(address member) public view returns (uint256) {
+        return sharesOwned[member];
+    }
+
+    function getDepositCount(uint256 period) public view returns (uint256) {
+        return depositCount[period];
     }
 }
