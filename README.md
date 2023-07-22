@@ -55,4 +55,4 @@ The Comuna Factory contract is responsible for the creation and tracking of all 
 The Comuna contract represents an individual community bank. It stores the state of the bank, including its pooled funds, active loans, and members. This contract also contains the logic for lending and borrowing within the community, including interest rates, loan durations, and collateral requirements.
 
 ## License
-Comuna Finance contracts are released under the [MIT license](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/LICENSE)
+Comuna Finance contracts are released under the MIT license
