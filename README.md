@@ -13,6 +13,8 @@ Through this protocol, communities can collectively pool funds, establish their 
   
 - **Customizable Loan Parameters:** Each community can set its loan parameters, including interest rates, loan durations, and collateral requirements, ensuring the system works best for their specific needs.
 
+- **Currency Flexibility:** The protocol is designed to work with any token that implements the ERC20 standard, giving communities the flexibility to choose their preferred currency.
+
 ## Installation
 
 Requires [Foundry](https://book.getfoundry.sh/getting-started/installation)
